@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIXEL VAULT — Кликер</title>
+<!-- Подключение шрифта Google Fonts "Press Start 2P" для стилизации под ретро-игры -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+/* CSS Variables: Глобальные переменные для удобного управления цветами и размерами */
+:root {
+  --bg: #0a0a0f; /* Основной фон */
+  --bg2: #12121a; /* Фон панелей/активных элементов */
+  --bg3: #1a1a26; /* Фон карточек/внутренних элементов */
+  --border: #3a3a5c; /* Цвет границ */
+  --border-bright: #6060a0; /* Яркий цвет границ (для ховера) */
+  --gold: #f0c040; /* Золотой цвет (основной акцент) */
+  --gold2: #ffd060; /* Более светлый золотой */
+  --cyan: #40e0d0; /* Голубой цвет (для авто-дохода, XP) */
+  --red: #e04040; /* Красный (ошибки, особые) */
+  --green: #40c060; /* Зеленый (успех, положительный эффект) */
+  --purple: #9060e0; /* Фиолетовый (для XP, спрайтов) */
+  --orange: #e08030; /* Оранжевый (для множителей) */
+  --white: #e0e0f0; /* Белый/светлый текст */
+  --dim: #606080; /* Тусклый текст/элементы */
+  --panel-w: 360px; /* Ширина панели улучшений */
+  --topbar-h: 72px; /* Высота верхней панели */
+}
+
+/* ── SELECTION: только числа/статы ── */
+/* Сброс стандартных стилей для всех элементов */
+*, *::before, *::after {
+  margin:0; padding:0; box-sizing:border-box;
+  image-rendering:pixelated; /* Обеспечивает пиксельный рендеринг изображений */
+  user-select:none; /* Запрещает выделение текста по умолчанию */
+  -webkit-user-select:none; /* Для Webkit-браузеров */
+  -moz-user-select:none; /* Для Firefox */
+  -webkit-tap-highlight-color:transparent; /* Убирает подсветку при касании на мобильных */
+}
+/* Разрешает выделение текста для элементов с классом .selectable и их потомков */
+.selectable, .selectable * {
+  user-select:text;
+  -webkit-user-select:text;
+  -moz-user-select:text;
+}
+
+body {
+  font-family:'Press Start 2P','Courier New',Courier,monospace; /* Используемый шрифт */
+  background:var(--bg); /* Фон из CSS-переменной */
+  color:var(--white); /* Цвет текста */
+  min-height:100vh; /* Минимальная высота на весь экран */
+  overflow:hidden; /* Запрещает прокрутку страницы */
+  /* Кастомный курсор в виде SVG, имитирующий пиксель */
+  cursor:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect x='0' y='0' width='4' height='4' fill='%23f0c040'/%3E%3Crect x='4' y='4' width='4' height='4' fill='%23f0c040'/%3E%3Crect x='8' y='8' width='4' height='4' fill='%23f0c040'/%3E%3Crect x='12' y='12' width='4' height='4' fill='%23f0c040'/%3E%3C/svg%3E") 0 0,crosshair;
+}
+
+/* Scanline — pointer-events:none, не мешает кликам */
+/* Псевдоэлемент для создания эффекта "сканлайна" (старого монитора) */
+body::after {
+  content:''; position:fixed; inset:0; /* Занимает всю область экрана */
+  /* Повторяющийся градиент для создания полос */
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.07) 2px,rgba(0,0,0,0.07) 4px);
+  pointer-events:none; /* Делает элемент некликабельным, чтобы не блокировать события */
+  z-index:9999; /* Поверх всех остальных элементов */
+}
+
+/* ── TOP BAR ── */
+/* Стили для верхней панели */
+#topbar {
+  position:fixed; top:0; left:0; right:0; height:var(--topbar-h);
+  background:var(--bg2); border-bottom:4px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between; /* Выравнивание элементов */
+  padding:0 24px; z-index:100; box-shadow:0 4px 0 #000;
+}
+.logo { font-size:11px; color:var(--gold); letter-spacing:2px; line-height:1.7;
+  text-shadow:0 0 14px var(--gold),2px 2px 0 #000; } /* Эффект свечения и тени */
+.score-block { display:flex; flex-direction:column; align-items:center; gap:5px; }
+.score-label { font-size:8px; color:var(--dim); }
+#score-display {
+  font-size:22px; color:var(--gold);
+  text-shadow:0 0 20px var(--gold),2px 2px 0 #000;
+  min-width:240px; text-align:center; transition:transform 0.1s;
+}
+#score-display.bump { transform:scale(1.14); } /* Анимация "подпрыгивания" при изменении счета */
+.stats-row { display:flex; flex-direction:column; gap:6px; font-size:9px; text-align:right; }
+.stat { color:var(--dim); }
+.stat span { color:var(--cyan); }
+
+/* ── MAIN ── */
+/* Основная игровая область */
+#main {
+  position:fixed; top:var(--topbar-h); left:0; right:0; bottom:0;
+  display:flex; align-items:center; justify-content:center;
+  transition:right 0.3s cubic-bezier(.4,0,.2,1); /* Анимация для сдвига при открытии панели */
+}
+#main.panel-open { right:var(--panel-w); } /* Сдвиг основной области при открытой панели */
+/* Псевдоэлемент для сетчатого фона */
+#main::before {
+  content:''; position:absolute; inset:0; pointer-events:none;
+  background-image:linear-gradient(rgba(60,60,100,0.13) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(60,60,100,0.13) 1px,transparent 1px);
+  background-size:32px 32px;
+}
+
+/* ── GAME AREA ── */
+/* Контейнер для игровых элементов (спрайт, XP-бар) */
+#game-area {
+  display:flex; flex-direction:column; align-items:center; gap:26px;
+  position:relative; z-index:10;
+}
+.xp-bar-wrap { width:280px; }
+.xp-label {
+  font-size:9px; color:var(--dim); margin-bottom:8px;
+  display:flex; justify-content:space-between;
+}
+.xp-bar { height:12px; background:var(--bg3); border:3px solid var(--border); overflow:hidden; }
+.xp-fill { height:100%; background:linear-gradient(90deg,var(--purple),var(--cyan));
+  transition:width 0.5s; box-shadow:0 0 10px var(--purple); } /* Заполнение XP-бара с градиентом и тенью */
+
+/* ── SPRITE ── */
+/* Обёртка для основного спрайта и его анимаций */
+#sprite-wrap {
+  position:relative; width:210px; height:210px;
+  display:flex; align-items:center; justify-content:center;
+}
+/* Анимированные орбиты вокруг спрайта */
+.orbit { position:absolute; width:220px; height:220px;
+  border:2px dashed rgba(96,96,160,0.18);
+  animation:spin 9s linear infinite; pointer-events:none; }
+.orbit2 { width:190px; height:190px; animation:spin 6s linear infinite reverse;
+  border-style:dotted; opacity:0.5; }
+.orbit-dot { position:absolute; width:7px; height:7px;
+  background:var(--gold); top:-3px; left:50%; box-shadow:0 0 8px var(--gold); }
+.orbit-dot2 { background:var(--cyan); top:auto; bottom:-3px; left:30%;
+  box-shadow:0 0 8px var(--cyan); }
+@keyframes spin { to { transform:rotate(360deg); } } /* Анимация вращения */
+
+/* Кнопка для клика по спрайту */
+#click-btn {
+  background:none; border:none; padding:0;
+  cursor:pointer; position:relative; z-index:2;
+  transition:transform 0.08s,filter 0.08s; outline:none;
+}
+#click-btn.hit { transform:scale(0.87)!important; filter:brightness(1.7) saturate(1.5); } /* Анимация "удара" */
+#click-btn svg { display:block; width:160px; height:160px;
+  filter:drop-shadow(0 0 18px rgba(240,192,64,0.45)); transition:filter 0.2s; }
+#click-btn:hover svg { filter:drop-shadow(0 0 28px rgba(240,192,64,0.8)); } /* Эффект свечения при наведении */
+
+.click-info { font-size:10px; color:var(--dim); text-align:center; line-height:1.8; }
+.click-info b { color:var(--gold2); font-weight:normal; }
+#auto-indicator { font-size:9px; color:var(--dim); text-align:center; }
+#auto-indicator.active { color:var(--cyan); animation:blink 1.2s step-end infinite; } /* Мигающий индикатор авто-клика */
+@keyframes blink { 50% { opacity:0.25; } }
+
+/* Кольцо пульсации при клике */
+.pulse-ring {
+  position:absolute; border:3px solid var(--gold);
+  width:70px; height:70px; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  animation:pulse-expand 0.45s ease-out forwards;
+  pointer-events:none; z-index:1;
+}
+@keyframes pulse-expand { to { transform:translate(-50%,-50%) scale(3.2); opacity:0; } }
+/* Анимация "тряски" элемента */
+@keyframes shake {
+  0%,100%{transform:translate(0,0);}
+  20%{transform:translate(-5px,3px);}
+  40%{transform:translate(5px,-3px);}
+  60%{transform:translate(-4px,4px);}
+  80%{transform:translate(4px,-2px);}
+}
+.shake { animation:shake 0.22s ease; }
+
+/* Level badge */
+#level-badge {
+  position:fixed; top:var(--topbar-h); left:0;
+  background:var(--bg2); border:3px solid var(--border);
+  border-top:none; border-left:none;
+  padding:10px 18px; font-size:9px; z-index:100;
+}
+#level-badge span { color:var(--purple); }
+
+/* ── UPGRADE TOGGLE ── */
+/* Кнопка открытия/закрытия панели улучшений */
+#upgrade-toggle {
+  position:fixed; right:0; top:50%; transform:translateY(-50%);
+  background:var(--bg2); border:4px solid var(--border); border-right:none;
+  padding:16px 10px;
+  font-family:'Press Start 2P',monospace; font-size:9px; color:var(--gold);
+  cursor:pointer; z-index:200; writing-mode:vertical-rl; letter-spacing:3px; /* Вертикальный текст */
+  transition:background 0.2s,border-color 0.2s,right 0.3s cubic-bezier(.4,0,.2,1);
+  box-shadow:-4px 0 0 #000;
+}
+#upgrade-toggle:hover { background:var(--bg3); border-color:var(--border-bright); }
+#upgrade-toggle.open { right:var(--panel-w); } /* Сдвиг кнопки при открытой панели */
+
+/* ── UPGRADE PANEL ── */
+/* Панель улучшений */
+#upgrade-panel {
+  position:fixed; top:var(--topbar-h);
+  right:calc(-1 * var(--panel-w)); bottom:0; /* Изначально скрыта за пределами экрана */
+  width:var(--panel-w);
+  background:var(--bg2); border-left:4px solid var(--border);
+  transition:right 0.3s cubic-bezier(.4,0,.2,1); /* Анимация появления/скрытия */
+  z-index:150; overflow-y:auto; /* Прокрутка по вертикали */
+  scrollbar-width:thin; scrollbar-color:var(--border) var(--bg); /* Стилизация скроллбара */
+}
+#upgrade-panel.open { right:0; } /* Отображение панели */
+
+.panel-header {
+  padding:18px 14px 14px; border-bottom:4px solid var(--border);
+  font-size:11px; color:var(--gold); text-align:center;
+  background:var(--bg3); letter-spacing:1px;
+  position:sticky; top:0; z-index:5; /* Прилипающая шапка */
+}
+.panel-header small { display:block; font-size:7px; color:var(--dim); margin-top:8px; }
+
+/* Category tabs */
+/* Вкладки для фильтрации улучшений по категориям */
+.cat-tabs {
+  display:flex; border-bottom:3px solid var(--border);
+  background:var(--bg3); position:sticky; top:62px; z-index:4; /* Прилипают под шапкой */
+}
+.cat-tab {
+  flex:1; padding:11px 2px; font-size:7px; color:var(--dim);
+  text-align:center; cursor:pointer; border:none; background:none;
+  font-family:'Press Start 2P',monospace;
+  border-bottom:3px solid transparent; margin-bottom:-3px;
+  transition:color 0.15s,border-color 0.15s;
+}
+.cat-tab:hover { color:var(--white); }
+.cat-tab.active { color:var(--gold); border-bottom-color:var(--gold); } /* Активная вкладка */
+
+/* ── UPGRADE CARDS ── */
+/* Стили для карточек улучшений */
+.upgrade-card {
+  margin:12px 12px 0;
+  border:3px solid var(--border);
+  background:var(--bg3);
+  padding:14px 12px;
+  cursor:pointer;
+  transition:border-color 0.15s,background 0.15s,transform 0.1s;
+  position:relative;
+  /* ФИХ БАГА: сама карточка ловит клики */
+  pointer-events:auto; /* Делает карточку кликабельной */
+}
+/* Дочерние элементы НЕ перехватывают pointer events — главный фикс бага */
+.upgrade-card > * { pointer-events:none; } /* Дочерние элементы некликабельны, чтобы клик всегда был на карточке */
+
+.upgrade-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:3px;
+  background:var(--border-bright); opacity:0; transition:opacity 0.15s;
+}
+.upgrade-card:hover:not(.locked):not(.maxed)::before { opacity:1; }
+.upgrade-card:hover:not(.locked):not(.maxed) {
+  border-color:var(--border-bright); background:#1c1c2c; transform:translateX(-2px);
+}
+.upgrade-card:active:not(.locked):not(.maxed) { transform:translateX(-2px) scale(0.98); }
+.upgrade-card.locked { opacity:0.3; cursor:not-allowed; pointer-events:none; } /* Заблокированные улучшения */
+.upgrade-card.maxed { border-color:var(--gold); cursor:default; } /* Улучшения максимального уровня */
+.upgrade-card.maxed::before { background:var(--gold); opacity:1; }
+.upgrade-card.maxed:hover { transform:none; }
+
+/* Colour stripe right = category */
+/* Цветовые полосы справа на карточке, обозначающие категорию */
+.upgrade-card.cat-click::after  { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--gold); }
+.upgrade-card.cat-auto::after   { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--cyan); }
+.upgrade-card.cat-sprite::after { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--purple); }
+.upgrade-card.cat-multi::after  { content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--orange); }
+.upgrade-card.cat-special::after{ content:''; position:absolute; right:0; top:0; bottom:0; width:3px; background:var(--red); }
+
+.card-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+.card-icon { width:36px; height:36px; flex-shrink:0; }
+.card-title { font-size:8px; color:var(--white); flex:1; line-height:1.5; }
+.card-level { font-size:7px; background:var(--border); padding:3px 6px; color:var(--cyan); white-space:nowrap; }
+.card-desc { font-size:7px; color:var(--dim); line-height:1.7; margin-bottom:10px; }
+.card-footer { display:flex; justify-content:space-between; align-items:center; }
+.card-cost { font-size:9px; color:var(--gold); }
+.card-cost.cant { color:var(--red); } /* Цена красным, если недостаточно очков */
+.card-effect { font-size:7px; color:var(--green); text-align:right; }
+
+/* ── PARTICLES ── */
+/* Слой для летающих частиц и текста при клике */
+#particles { position:fixed; inset:0; pointer-events:none; z-index:500; }
+.particle {
+  position:absolute; font-family:'Press Start 2P',monospace;
+  font-size:12px; color:var(--gold); text-shadow:2px 2px 0 #000;
+  animation:float-up 1s ease-out forwards; pointer-events:none; white-space:nowrap;
+}
+.particle.crit { color:#fff; font-size:17px; text-shadow:0 0 10px var(--gold),2px 2px 0 #000; } /* Стиль для критического клика */
+.pixel-dot {
+  position:absolute; animation:pixel-scatter 0.75s ease-out forwards; pointer-events:none;
+}
+/* Анимации для частиц */
+@keyframes float-up {
+  0%   { transform:translate(-50%,0) scale(1); opacity:1; }
+  60%  { opacity:1; }
+  100% { transform:translate(-50%,-90px) scale(0.5); opacity:0; }
+}
+@keyframes pixel-scatter {
+  0%   { opacity:1; transform:translate(0,0) scale(1); }
+  100% { opacity:0; transform:translate(var(--dx),var(--dy)) scale(0); } /* Использует CSS-переменные для динамической траектории */
+}
+
+/* ── TOAST ── */
+/* Всплывающие уведомления */
+#toast {
+  position:fixed; bottom:28px; left:50%;
+  transform:translateX(-50%) translateY(100px); /* Изначально скрыто ниже экрана */
+  background:var(--bg3); border:3px solid var(--green);
+  padding:12px 20px; font-size:9px; color:var(--green);
+  transition:transform 0.3s; z-index:600;
+  text-align:center; line-height:2;
+  box-shadow:4px 4px 0 #000; pointer-events:none;
+}
+#toast.show { transform:translateX(-50%) translateY(0); } /* Показать уведомление */
+#toast.warn { border-color:var(--red); color:var(--red); } /* Стиль для предупреждений */
+#toast.buy  { border-color:var(--gold); color:var(--gold); } /* Стиль для покупки */
+
+.panel-tools {
+  display:flex; flex-wrap:wrap; gap:8px; justify-content:center;
+  padding:12px 10px 18px; border-top:3px solid var(--border);
+  background:var(--bg3);
+  position:sticky; bottom:0; /* Прилипают к низу панели */
+}
+.panel-tools button {
+  font-family:'Press Start 2P',monospace; font-size:6px; padding:10px 8px;
+  border:3px solid var(--border); background:var(--bg2); color:var(--dim);
+  cursor:pointer; transition:border-color 0.15s,color 0.15s;
+}
+.panel-tools button:hover { border-color:var(--border-bright); color:var(--gold); }
+
+/* Медиа-запросы для адаптивности на маленьких экранах */
+@media (max-width: 520px) {
+  #topbar { flex-wrap:wrap; height:auto; min-height:var(--topbar-h); padding:10px 12px; gap:10px; }
+  #score-display { min-width:0; font-size:17px; }
+  .stats-row { font-size:7px; }
+  #main.panel-open { right:0; } /* На мобильных панель открывается на весь экран, не сдвигая main */
+  #upgrade-panel {
+    width:100vw; max-width:100vw;
+    right:-100vw;
+    border-left:none;
+  }
+  #upgrade-panel.open { right:0; }
+  #upgrade-toggle.open { right:100vw; } /* Кнопка уходит за экран */
+  #game-area { gap:18px; }
+  .xp-bar-wrap { width:min(280px,92vw); }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="logo">SUPER HARD<br>PIXEL CLICKER</div>
+  <div class="score-block selectable">
+    <div class="score-label">[ ТЕКУЩИЕ ОЧКИ ]</div>
+    <div id="score-display">0</div>
+    <div class="score-label" id="total-label">ВСЕГО НАБРАНО: 0</div>
+  </div>
+  <div class="stats-row selectable">
+    <div class="stat">КЛИК: <span id="stat-click">1</span></div>
+    <div class="stat">АВТ: <span id="stat-auto">0</span>/с</div>
+    <div class="stat">КРИТ: <span id="stat-crit">0%</span></div>
+  </div>
+</div>
+
+<!-- Level badge -->
+<div id="level-badge">УР. <span id="level-num">1</span></div>
+
+<!-- Particles layer -->
+<div id="particles"></div>
+
+<!-- Upgrade toggle tab -->
+<button type="button" id="upgrade-toggle" onclick="togglePanel()" aria-expanded="false" aria-controls="upgrade-panel">▶ УЛУЧШЕНИЯ ◀</button>
+
+<!-- Upgrade panel -->
+<div id="upgrade-panel" role="dialog" aria-label="Улучшения">
+  <div class="panel-header">
+    УЛУЧШЕНИЯ
+    <small>КЛИК ПО КАРТОЧКЕ — ПОКУПКА</small>
+  </div>
+  <div class="cat-tabs" role="tablist">
+    <button type="button" class="cat-tab active" data-cat="all"     onclick="filterCat('all')" role="tab">ВСЕ</button>
+    <button type="button" class="cat-tab"        data-cat="click"   onclick="filterCat('click')" role="tab">КЛИК</button>
+    <button type="button" class="cat-tab"        data-cat="auto"    onclick="filterCat('auto')" role="tab">АВТО</button>
+    <button type="button" class="cat-tab"        data-cat="multi"   onclick="filterCat('multi')" role="tab">БУСТ</button>
+    <button type="button" class="cat-tab"        data-cat="special" onclick="filterCat('special')" role="tab">ОСОБЫЕ</button>
+  </div>
+  <div id="upgrade-list"></div>
+  <div class="panel-tools">
+    <button type="button" id="btn-export" onclick="exportSave()">ЭКСПОРТ</button>
+    <button type="button" id="btn-import" onclick="importSave()">ИМПОРТ</button>
+    <button type="button" id="btn-reset" onclick="resetGame()">СБРОС</button>
+  </div>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="game-area">
+    <div id="auto-indicator">[ АВТ-КЛИКЕР: ВЫКЛ ]</div>
+    <div id="sprite-wrap">
+      <div class="orbit"><div class="orbit-dot"></div></div>
+      <div class="orbit orbit2"><div class="orbit-dot orbit-dot2"></div></div>
+      <button type="button" id="click-btn" aria-label="Клик — заработать очки"></button>
+    </div>
+    <div class="click-info">СИЛА КЛИКА: <b id="click-power-label">+1</b></div>
+    <div class="xp-bar-wrap">
+      <div class="xp-label">
+        <span>УР.<span id="level-cur">1</span></span>
+        <span style="color:var(--dim);font-size:7px">ПРОГРЕСС</span>
+        <span>УР.<span id="next-level">2</span></span>
+      </div>
+      <div class="xp-bar"><div class="xp-fill" id="xp-bar" style="width:0%"></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ══ AUDIO ══
+// Инициализация AudioContext для создания звуковых эффектов
+const AC = new (window.AudioContext || window.webkitAudioContext)();
+
+/**
+ * Воспроизводит короткий звуковой сигнал.
+ * @param {number} freq - Частота звука (Гц).
+ * @param {string} type - Тип волны ('sine', 'square', 'sawtooth', 'triangle').
+ * @param {number} vol - Громкость (от 0 до 1).
+ * @param {number} dur - Длительность звука (секунды).
+ * @param {number} [delay=0] - Задержка перед началом воспроизведения (секунды).
+ */
+function beep(freq,type,vol,dur,delay=0){
+  const o=AC.createOscillator(),g=AC.createGain(); // Создаем осциллятор и усилитель
+  o.connect(g);g.connect(AC.destination); // Подключаем к аудиовыходу
+  o.type=type;o.frequency.value=freq; // Устанавливаем тип волны и частоту
+  const t=AC.currentTime+delay; // Вычисляем время начала с учетом задержки
+  g.gain.setValueAtTime(vol,t); // Устанавливаем громкость в начале
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur); // Плавное затухание громкости до 0.001 (почти ноль)
+  o.start(t);o.stop(t+dur); // Начинаем и останавливаем воспроизведение
+}
+
+// Функции для воспроизведения конкретных звуков
+const playClick  = ()=>beep(900,'square',0.10,0.07); // Звук обычного клика
+const playCoin   = ()=>[1047,1319,1568].forEach((f,i)=>beep(f,'square',0.07,0.10,i*0.055)); // Звук получения монеты (аккорд)
+const playBuy    = ()=>[523,659,784,1047].forEach((f,i)=>beep(f,'square',0.09,0.12,i*0.065)); // Звук покупки
+const playCrit   = ()=>{ beep(1600,'square',0.12,0.05); beep(2000,'square',0.08,0.07,0.05); }; // Звук критического клика
+const playError  = ()=>beep(160,'square',0.09,0.15); // Звук ошибки
+const playLevelUp= ()=>[523,659,784,1047,1319].forEach((f,i)=>beep(f,'square',0.10,0.15,i*0.08)); // Звук повышения уровня
+
+// ══ SPRITES ══
+// Объект, содержащий SVG-коды для различных спрайтов (сундуки, монета, артефакт)
+const SPRITES={
+  chest_closed:`<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="7" width="14" height="8" fill="#7a3a08"/>
+    <rect x="1" y="7" width="14" height="1" fill="#c06820"/>
+    <rect x="2" y="3" width="12" height="5" fill="#9a4a10"/>
+    <rect x="2" y="3" width="12" height="1" fill="#d07828"/>
+    <rect x="1" y="7" width="1" height="8" fill="#4a2000"/>
+    <rect x="14" y="7" width="1" height="8" fill="#4a2000"/>
+    <rect x="1" y="3" width="1" height="5" fill="#5a2800"/>
+    <rect x="14" y="3" width="1" height="5" fill="#5a2800"/>
+    <rect x="5" y="7" width="6" height="4" fill="#b87820"/>
+    <rect x="6" y="8" width="4" height="2" fill="#f0c040"/>
+    <rect x="7" y="8" width="2" height="2" fill="#ffe060"/>
+    <rect x="3" y="8" width="2" height="2" fill="#c07020"/>
+    <rect x="11" y="8" width="2" height="2" fill="#c07020"/>
+    <rect x="3" y="4" width="2" height="2" fill="#d09030"/>
+    <rect x="11" y="4" width="2" height="2" fill="#d09030"/>
+    <rect x="7" y="4" width="2" height="1" fill="#e0a040"/>
+  </svg>`,
+  chest_open:`<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="8" width="14" height="7" fill="#1a3a6a"/>
+    <rect x="1" y="8" width="14" height="1" fill="#2a6a9a"/>
+    <rect x="1" y="8" width="1" height="7" fill="#0f2a4a"/>
+    <rect x="14" y="8" width="1" height="7" fill="#0f2a4a"/>
+    <rect x="2" y="1" width="12" height="8" fill="#3a7aba"/>
+    <rect x="2" y="1" width="12" height="1" fill="#6ab0f0"/>
+    <rect x="1" y="1" width="1" height="8" fill="#123a5a"/>
+    <rect x="14" y="1" width="1" height="8" fill="#123a5a"/>
+    <rect x="3" y="8" width="10" height="4" fill="#80b0e0"/>
+    <rect x="4" y="9" width="8" height="2" fill="#a0d0ff"/>
+    <rect x="5" y="11" width="6" height="3" fill="#80b8f0"/>
+    <rect x="6" y="12" width="4" height="2" fill="#e0f0ff"/>
+    <rect x="7" y="12" width="2" height="2" fill="#a0d0ff"/>
+    <rect x="0" y="7" width="2" height="3" fill="#80b0e0"/>
+    <rect x="14" y="7" width="2" height="3" fill="#80b0e0"/>
+    <rect x="7" y="0" width="2" height="2" fill="#4080c0"/>
+  </svg>`,
+  chest_golden:`<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="1" y="8" width="14" height="7" fill="#b06010"/>
+    <rect x="1" y="8" width="14" height="1" fill="#e08020"/>
+    <rect x="2" y="1" width="12" height="8" fill="#d08020"/>
+    <rect x="2" y="1" width="12" height="1" fill="#f0a030"/>
+    <rect x="1" y="8" width="1" height="7" fill="#804000"/>
+    <rect x="14" y="8" width="1" height="7" fill="#804000"/>
+    <rect x="1" y="1" width="1" height="8" fill="#904800"/>
+    <rect x="14" y="1" width="1" height="8" fill="#904800"/>
+    <rect x="3" y="8" width="10" height="4" fill="#f0c040"/>
+    <rect x="4" y="9" width="8" height="2" fill="#ffe860"/>
+    <rect x="5" y="11" width="6" height="3" fill="#ffd040"/>
+    <rect x="6" y="12" width="4" height="2" fill="#ffffff"/>
+    <rect x="7" y="12" width="2" height="2" fill="#ffe860"/>
+    <rect x="0" y="7" width="2" height="3" fill="#f0c040"/>
+    <rect x="14" y="7" width="2" height="3" fill="#f0c040"/>
+    <rect x="7" y="0" width="2" height="2" fill="#f0c040"/>
+  </svg>`,
+  coin:`<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="4" y="1" width="8" height="1" fill="#c09020"/>
+    <rect x="2" y="2" width="2" height="2" fill="#c09020"/>
+    <rect x="12" y="2" width="2" height="2" fill="#c09020"/>
+    <rect x="1" y="4" width="1" height="8" fill="#c09020"/>
+    <rect x="14" y="4" width="1" height="8" fill="#c09020"/>
+    <rect x="2" y="12" width="2" height="2" fill="#c09020"/>
+    <rect x="12" y="12" width="2" height="2" fill="#c09020"/>
+    <rect x="4" y="14" width="8" height="1" fill="#c09020"/>
+    <rect x="4" y="2" width="8" height="12" fill="#f0c040"/>
+    <rect x="2" y="4" width="2" height="8" fill="#f0c040"/>
+    <rect x="12" y="4" width="2" height="8" fill="#f0c040"/>
+    <rect x="4" y="2" width="5" height="2" fill="#ffe860"/>
+    <rect x="2" y="4" width="2" height="5" fill="#ffe860"/>
+    <rect x="6" y="5" width="4" height="6" fill="#d09020"/>
+    <rect x="5" y="6" width="6" height="4" fill="#d09020"/>
+    <rect x="7" y="6" width="2" height="4" fill="#f0c040"/>
+    <rect x="6" y="7" width="4" height="2" fill="#f0c040"/>
+    <rect x="7" y="7" width="2" height="2" fill="#ffe060"/>
+  </svg>`,
+  artifact:`<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <rect x="7" y="0" width="2" height="2" fill="#a070f0"/>
+    <rect x="5" y="2" width="6" height="2" fill="#b080ff"/>
+    <rect x="3" y="4" width="10" height="2" fill="#c090ff"/>
+    <rect x="1" y="6" width="14" height="4" fill="#9060e0"/>
+    <rect x="3" y="10" width="10" height="2" fill="#c090ff"/>
+    <rect x="5" y="12" width="6" height="2" fill="#b080ff"/>
+    <rect x="7" y="14" width="2" height="2" fill="#a070f0"/>
+    <rect x="0" y="7" width="2" height="2" fill="#7040c0"/>
+    <rect x="14" y="7" width="2" height="2" fill="#7040c0"/>
+    <rect x="7" y="1" width="2" height="1" fill="#e0c0ff"/>
+    <rect x="6" y="7" width="4" height="2" fill="#ffffff"/>
+    <rect x="7" y="6" width="2" height="4" fill="#ffffff"/>
+    <rect x="7" y="7" width="2" height="2" fill="#e0c0ff"/>
+  </svg>`,
+};
+
+// Объект, содержащий SVG-коды для иконок улучшений
+const ICONS={
+  click:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="3" fill="#f0c040"/><rect x="0" y="3" width="3" height="2" fill="#f0c040"/><rect x="5" y="3" width="3" height="2" fill="#f0c040"/><rect x="3" y="5" width="2" height="3" fill="#f0c040"/><rect x="2" y="2" width="4" height="4" fill="#ffe080"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  auto:`<svg viewBox="0 0 8 8"><rect x="1" y="1" width="6" height="6" fill="#40c0a0"/><rect x="2" y="2" width="4" height="4" fill="#204030"/><rect x="3" y="3" width="2" height="2" fill="#40e0c0"/></svg>`,
+  mine:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="5" fill="#909090"/><rect x="1" y="4" width="6" height="2" fill="#707070"/><rect x="0" y="6" width="8" height="2" fill="#505050"/><rect x="2" y="5" width="1" height="1" fill="#f0c040"/><rect x="5" y="5" width="1" height="1" fill="#f0c040"/></svg>`,
+  sprite:`<svg viewBox="0 0 8 8"><rect x="2" y="0" width="4" height="1" fill="#f0c040"/><rect x="1" y="1" width="1" height="6" fill="#f0c040"/><rect x="6" y="1" width="1" height="6" fill="#f0c040"/><rect x="2" y="7" width="4" height="1" fill="#f0c040"/><rect x="2" y="2" width="4" height="4" fill="#ffe080"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  crit:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="2" fill="#e04040"/><rect x="0" y="3" width="2" height="2" fill="#e04040"/><rect x="6" y="3" width="2" height="2" fill="#e04040"/><rect x="3" y="6" width="2" height="2" fill="#e04040"/><rect x="2" y="2" width="4" height="4" fill="#f06060"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  dragon:`<svg viewBox="0 0 8 8"><rect x="1" y="3" width="6" height="3" fill="#40a020"/><rect x="2" y="2" width="4" height="1" fill="#40a020"/><rect x="0" y="4" width="2" height="2" fill="#208010"/><rect x="6" y="4" width="2" height="2" fill="#208010"/><rect x="3" y="1" width="1" height="1" fill="#60c040"/><rect x="5" y="1" width="1" height="1" fill="#60c040"/><rect x="3" y="4" width="1" height="1" fill="#fff"/><rect x="5" y="4" width="1" height="1" fill="#fff"/></svg>`,
+  artifact:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="1" fill="#9060e0"/><rect x="2" y="1" width="4" height="1" fill="#a070f0"/><rect x="1" y="2" width="6" height="4" fill="#c090ff"/><rect x="2" y="6" width="4" height="1" fill="#a070f0"/><rect x="3" y="7" width="2" height="1" fill="#9060e0"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  multi:`<svg viewBox="0 0 8 8"><rect x="0" y="0" width="3" height="3" fill="#e06020"/><rect x="5" y="0" width="3" height="3" fill="#2060e0"/><rect x="0" y="5" width="3" height="3" fill="#20a040"/><rect x="5" y="5" width="3" height="3" fill="#e020a0"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  gold:`<svg viewBox="0 0 8 8"><rect x="2" y="0" width="4" height="1" fill="#c09020"/><rect x="1" y="1" width="1" height="6" fill="#c09020"/><rect x="6" y="1" width="1" height="6" fill="#c09020"/><rect x="2" y="7" width="4" height="1" fill="#c09020"/><rect x="2" y="1" width="4" height="6" fill="#f0c040"/><rect x="3" y="2" width="2" height="4" fill="#ffe060"/></svg>`,
+  luck:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="1" fill="#e040e0"/><rect x="2" y="1" width="4" height="1" fill="#e040e0"/><rect x="1" y="2" width="6" height="1" fill="#f060f0"/><rect x="0" y="3" width="8" height="2" fill="#f080f0"/><rect x="1" y="5" width="6" height="1" fill="#f060f0"/><rect x="2" y="6" width="4" height="1" fill="#e040e0"/><rect x="3" y="7" width="2" height="1" fill="#e040e0"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  shield:`<svg viewBox="0 0 8 8"><rect x="2" y="0" width="4" height="1" fill="#4080e0"/><rect x="1" y="1" width="6" height="4" fill="#6090e0"/><rect x="1" y="5" width="6" height="1" fill="#4080e0"/><rect x="2" y="6" width="4" height="1" fill="#4080e0"/><rect x="3" y="7" width="2" height="1" fill="#3070d0"/><rect x="3" y="2" width="2" height="3" fill="#c0d0ff"/><rect x="2" y="3" width="4" height="1" fill="#c0d0ff"/></svg>`,
+  time:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="1" fill="#e0e040"/><rect x="2" y="1" width="4" height="1" fill="#e0e040"/><rect x="1" y="2" width="1" height="4" fill="#e0e040"/><rect x="6" y="2" width="1" height="4" fill="#e0e040"/><rect x="2" y="6" width="4" height="1" fill="#e0e040"/><rect x="3" y="7" width="2" height="1" fill="#e0e040"/><rect x="4" y="2" width="1" height="3" fill="#fff"/><rect x="2" y="4" width="2" height="1" fill="#fff"/></svg>`,
+  star:`<svg viewBox="0 0 8 8"><rect x="3" y="0" width="2" height="2" fill="#f0e040"/><rect x="0" y="3" width="2" height="2" fill="#f0e040"/><rect x="6" y="3" width="2" height="2" fill="#f0e040"/><rect x="1" y="1" width="2" height="2" fill="#f0e040"/><rect x="5" y="1" width="2" height="2" fill="#f0e040"/><rect x="1" y="5" width="2" height="2" fill="#f0e040"/><rect x="5" y="5" width="2" height="2" fill="#f0e040"/><rect x="2" y="2" width="4" height="4" fill="#ffe860"/><rect x="3" y="3" width="2" height="2" fill="#fff"/></svg>`,
+  void:`<svg viewBox="0 0 8 8"><rect x="0" y="0" width="8" height="8" fill="#0a0010"/><rect x="2" y="2" width="4" height="4" fill="#4020a0"/><rect x="3" y="3" width="2" height="2" fill="#8040e0"/><rect x="1" y="0" width="1" height="1" fill="#fff"/><rect x="6" y="2" width="1" height="1" fill="#c090ff"/><rect x="0" y="5" width="1" height="1" fill="#fff"/><rect x="7" y="6" width="1" height="1" fill="#c090ff"/><rect x="4" y="0" width="1" height="1" fill="#c090ff"/></svg>`,
+};
+
+// ══ STATE ══
+// Глобальные переменные состояния игры
+let score=0; // Текущие очки
+let totalScore=0; // Всего заработано очков (для прогресса уровня)
+let clickPower=1; // Сила одного клика
+let autoRate=0; // Автоматический доход в секунду
+let critChance=0; // Шанс критического удара
+let currentSprite='chest_closed'; // Текущий спрайт (изображение)
+let panelOpen=false; // Состояние панели улучшений (открыта/закрыта)
+let level=1; // Текущий уровень игрока
+let clickCount=0; // Общее количество кликов
+let spriteOrder=[]; // Порядок активации спрайтов (для сохранения)
+
+// Пороги очков для получения нового уровня
+const LVL_TH=[0,50,200,600,2000,6000,18000,60000,200000,700000,3000000];
+/** Баланс: ~30 мин до макс. всех апгрейдов (симуляция: CPS≈3.5, жадная покупка самой дешёвой ступени). См. balance_sim.js */
+const PRICE_BALANCE = 70.035; // Множитель для расчета цен улучшений, используется для баланса
+const SAVE_KEY='pixel_vault_save_v3'; // Ключ для сохранения данных в localStorage
+
+// ID спрайтов, которые могут быть разблокированы
+const SPRITE_IDS=['s_coin','s_golden','s_art'];
+// Множители и соответствующие спрайты для специальных улучшений
+const SPRITE_MULT={s_coin:{mult:5,sprite:'coin'},s_golden:{mult:8,sprite:'chest_golden'},s_art:{mult:20,sprite:'artifact'}};
+
+// ══ UPGRADES ══
+// Массив объектов, описывающих все улучшения в игре
+const UPG=[
+  // ── CLICK ── (Улучшения для клика)
+  {id:'pow',      cat:'click',   icon:'click',    title:'ОСТРЫЙ КОГОТЬ',     desc:'Сила клика ×2 за уровень',               basePrice:15,     maxLevel:12, level:0,
+   effect(){clickPower=Math.pow(2,this.level)*(1+level*0.15*U('amplify').level);}, // Функция, применяющая эффект улучшения
+   fxText(){return`БАЗА ${fmt(Math.pow(2,this.level)*(1+level*0.15*U('amplify').level))}`;}}, // Текст для отображения текущего эффекта
+
+  {id:'crit',     cat:'click',   icon:'crit',     title:'КРИТИЧЕСКИЙ УДАР',  desc:'Шанс нанести x5 урона за клик',          basePrice:120,    maxLevel:8,  level:0,
+   effect(){critChance=this.level*0.07;},
+   fxText(){return`КРИТ ${Math.round(this.level*7)}%`;}},
+
+  {id:'combo',    cat:'click',   icon:'star',     title:'КОМБО-УДАР',        desc:'Каждый 10-й клик — тройная сила',        basePrice:350,    maxLevel:6,  level:0,
+   effect(){}, // Эффект применяется при каждом клике, здесь не нужно обновлять глобальные переменные
+   fxText(){return`КОМБО ×${2+this.level}`;}},
+
+  {id:'lucky',    cat:'click',   icon:'luck',     title:'УДАЧНОЕ КАСАНИЕ',   desc:'1% шанс получить x50 очков за клик',    basePrice:1500,   maxLevel:5,  level:0,
+   effect(){},
+   fxText(){return`ДЖЕКПОТ ${this.level}%`;}},
+
+  {id:'fury',     cat:'click',   icon:'crit',     title:'ЯРОСТЬ ПИКСЕЛЯ',    desc:'Каждый клик также даёт +0.1% от баланса',basePrice:10000,  maxLevel:5,  level:0,
+   effect(){},
+   fxText(){return`+${(this.level*0.1).toFixed(1)}% БАЛАНСА`;}},
+
+  // ── AUTO ── (Улучшения для автоматического дохода)
+  {id:'gnome',    cat:'auto',    icon:'auto',     title:'АВТО-ГНОМ',         desc:'+2 очка в секунду',                      basePrice:60,     maxLevel:12, level:0,
+   effect(){recalcAuto();}, // Пересчитывает автоматический доход
+   fxText(){return`+${this.level*2}/с`;}},
+
+  {id:'mine',     cat:'auto',    icon:'mine',     title:'РОБО-РУДНИК',       desc:'+10 очков в секунду',                    basePrice:400,    maxLevel:10, level:0,
+   effect(){recalcAuto();},
+   fxText(){return`+${this.level*10}/с`;}},
+
+  {id:'dragon',   cat:'auto',    icon:'dragon',   title:'ДРАКОН-ЗАВОД',      desc:'+60 очков в секунду',                    basePrice:3000,   maxLevel:8,  level:0,
+   effect(){recalcAuto();},
+   fxText(){return`+${this.level*60}/с`;}},
+
+  {id:'rift',     cat:'auto',    icon:'time',     title:'ВРЕМЕННОЙ РАЗЛОМ',  desc:'+400 очков в секунду',                   basePrice:25000,  maxLevel:6,  level:0,
+   effect(){recalcAuto();},
+   fxText(){return`+${this.level*400}/с`;}},
+
+  {id:'void_gen', cat:'auto',    icon:'void',     title:'ГЕНЕРАТОР ПУСТОТЫ', desc:'+3000 очков в секунду',                  basePrice:250000, maxLevel:5,  level:0,
+   effect(){recalcAuto();},
+   fxText(){return`+${this.level*3000}/с`;}},
+
+  // ── MULTI / BOOST ── (Множители и бусты)
+  {id:'amplify',  cat:'multi',   icon:'multi',    title:'УСИЛИТЕЛЬ',         desc:'Все источники дохода ×1.5',              basePrice:8000,   maxLevel:7,  level:0,
+   effect(){recalcAuto();},
+   fxText(){return`ВСЁ ×${Math.pow(1.5,this.level).toFixed(2)}`;}},
+
+  {id:'shield',   cat:'multi',   icon:'shield',   title:'ПИКСЕЛЬ-ЩИТ',      desc:'Клик усиливается с уровнем игрока',      basePrice:5000,   maxLevel:5,  level:0,
+   effect(){U('pow').effect();}, // Вызывает эффект другого улучшения
+   fxText(){return`БОНУС ×${(1+level*0.15*U('amplify').level).toFixed(2)}`;}},
+
+  {id:'golden_h', cat:'multi',   icon:'gold',     title:'ЗОЛОТОЕ СЕРДЦЕ',    desc:'Пассивный доход ×2 за уровень',          basePrice:50000,  maxLevel:5,  level:0,
+   effect(){recalcAuto();},
+   fxText(){return`АВТ ×${Math.pow(2,this.level).toFixed(2)}`;}},
+
+  // ── SPECIAL / SPRITE ── (Особые улучшения/спрайты)
+  {id:'s_coin',   cat:'special', icon:'sprite',   title:'ЗОЛОТАЯ МОНЕТА',    desc:'Новый спрайт! Сила клика ×5',           basePrice:300,    maxLevel:1,  level:0,
+   effect(){currentSprite='coin';clickPower*=5;renderSprite();}, // Меняет спрайт и множитель клика
+   fxText(){return'СПРАЙТ: МОНЕТА';}},
+
+  {id:'s_golden', cat:'special', icon:'gold',     title:'ЗОЛОТОЙ СУНДУК',    desc:'Редкий спрайт! Сила клика ×8',          basePrice:8000,   maxLevel:1,  level:0,
+   effect(){currentSprite='chest_golden';clickPower*=8;renderSprite();},
+   fxText(){return'СПРАЙТ: ЗОЛОТО';}},
+
+  {id:'s_art',    cat:'special', icon:'artifact', title:'АРТЕФАКТ БОГОВ',    desc:'Легендарный спрайт! Сила клика ×20',    basePrice:100000, maxLevel:1,  level:0,
+   effect(){currentSprite='artifact';clickPower*=20;renderSprite();},
+   fxText(){return'СПРАЙТ: АРТЕФАКТ';}},
+];
+
+// ══ UPGRADE UTILITIES ══
+// Быстрый доступ к улучшениям по ID
+const UPG_BY_ID={};
+for(const u of UPG)UPG_BY_ID[u.id]=u; // Заполняем объект для быстрого поиска
+function U(id){return UPG_BY_ID[id];} // Функция-хелпер для получения улучшения по ID
+
+// Fallback для старых сохранений или если spriteOrder пуст
+function legacySpriteOrderFallback(){
+  const o=[];
+  for(const id of SPRITE_IDS){ if(U(id).level>0) o.push(id); }
+  return o;
+}
+
+/**
+ * Рассчитывает стоимость следующего уровня улучшения.
+ * @param {object} u - Объект улучшения.
+ * @returns {number} Стоимость.
+ */
+function upgradePrice(u){return Math.max(1, Math.floor(u.basePrice*PRICE_BALANCE*Math.pow(1.65,u.level)));}
+
+/**
+ * Пересчитывает и обновляет автоматический доход.
+ */
+function recalcAuto(){
+  // Множители от улучшений 'amplify' и 'golden_h'
+  const multAmp =Math.pow(1.5,U('amplify').level);
+  const multGold=Math.pow(2,  U('golden_h').level);
+  // Базовый автоматический доход от различных источников
+  const base=U('gnome').level*2+U('mine').level*10+U('dragon').level*60+U('rift').level*400+U('void_gen').level*3000;
+  autoRate=base*multAmp*multGold; // Итоговый автоматический доход
+  const s=autoRate>=10?fmt(autoRate):autoRate.toFixed(1); // Форматирование для отображения
+  document.getElementById('stat-auto').textContent=s; // Обновление UI
+  const ind=document.getElementById('auto-indicator');
+  if(autoRate>0){ind.textContent=`[ АВТ: ${s}/с ✓ ]`;ind.className='active';} // Активация индикатора авто-клика
+  else{ind.textContent='[ АВТ-КЛИКЕР: ВЫКЛ ]';ind.className='';}
+}
+
+/**
+ * Синхронизирует текущий уровень игрока на основе общего набранного счета.
+ */
+function syncLevelFromTotal(){
+  let lv=1;
+  for(let i=1;i<LVL_TH.length;i++)if(totalScore>=LVL_TH[i])lv=i+1; // Определяем уровень, сравнивая totalScore с порогами
+  level=Math.min(lv,LVL_TH.length); // Уровень не может быть выше максимального
+}
+
+/**
+ * Применяет эффекты всех купленных улучшений.
+ * Это необходимо вызывать при загрузке игры или изменении связанных улучшений.
+ */
+function applyAllUpgradeEffects(){
+  clickPower=1; // Сброс базовой силы клика перед пересчетом
+  critChance=0; // Сброс шанса крита
+  syncLevelFromTotal(); // Обновляем уровень игрока
+  U('pow').effect(); // Применяем эффект "Силы клика"
+  U('crit').effect(); // Применяем эффект "Критического удара"
+  recalcAuto(); // Пересчитываем автоматический доход
+  if(U('shield').level>0)U('shield').effect(); // Применяем эффект "Пиксель-щита", если он есть
+
+  // Применяем эффекты спрайтов
+  const ord=spriteOrder.length?spriteOrder:legacySpriteOrderFallback();
+  for(const id of ord){
+    const u=U(id);
+    if(!u||u.level<1)continue;
+    const m=SPRITE_MULT[id];
+    if(m){ clickPower*=m.mult; currentSprite=m.sprite; } // Умножаем силу клика и меняем спрайт
+  }
+  renderSprite(); // Обновляем отображение спрайта
+}
+
+// ══ SAVE / LOAD ══
+/**
+ * Генерирует объект с данными для сохранения игры.
+ * @returns {object} Объект сохранения.
+ */
+function getSavePayload(){
+  return{
+    version:2, // Версия сохранения для совместимости
+    score,totalScore,clickCount,currentSprite,
+    levels:UPG.map(u=>u.level), // Сохраняем уровни всех улучшений
+    cat:_cat, // Сохраняем текущую категорию улучшений
+    spriteOrder:spriteOrder.slice() // Сохраняем порядок активации спрайтов
+  };
+}
+
+/**
+ * Сохраняет игру в localStorage.
+ */
+function saveGame(){
+  try{
+    localStorage.setItem(SAVE_KEY,JSON.stringify(getSavePayload()));
+  }catch(e){/* Игнорируем ошибки localStorage (например, переполнение) */}
+}
+
+let _saveT; // Таймер для отложенного сохранения
+/**
+ * Планирует сохранение игры через короткий промежуток времени.
+ * Используется для предотвращения частых записей в localStorage.
+ */
+function scheduleSave(){
+  clearTimeout(_saveT); // Отменяем предыдущий запланированный save
+  _saveT=setTimeout(saveGame,400); // Планируем новое сохранение через 400мс
+}
+
+/**
+ * Применяет загруженные данные к состоянию игры.
+ * @param {object} d - Объект с загруженными данными.
+ * @returns {boolean} true, если данные успешно применены, иначе false.
+ */
+function applyLoadedData(d){
+  // Проверка на корректность формата данных
+  if(!d||!Array.isArray(d.levels)||d.levels.length!==UPG.length)return false;
+  score=+d.score||0; // Преобразуем в число, если undefined, то 0
+  totalScore=+d.totalScore||0;
+  clickCount=+d.clickCount||0;
+  currentSprite=d.currentSprite||'chest_closed';
+  // Восстанавливаем уровни улучшений
+  d.levels.forEach((lv,i)=>{UPG[i].level=Math.max(0,Math.min(UPG[i].maxLevel,+lv||0));});
+  // Восстанавливаем текущую категорию
+  if(d.cat&&['all','click','auto','multi','special'].includes(d.cat))_cat=d.cat;
+  // Восстанавливаем порядок спрайтов
+  if(Array.isArray(d.spriteOrder)){
+    spriteOrder=d.spriteOrder.filter(id=>SPRITE_IDS.includes(id));
+  }else{
+    spriteOrder=legacySpriteOrderFallback(); // Fallback для старых версий
+  }
+  applyAllUpgradeEffects(); // Применяем эффекты всех улучшений
+  return true;
+}
+
+/**
+ * Загружает игру из localStorage.
+ * Попытки загрузить сохранения предыдущих версий.
+ * @returns {boolean} true, если игра успешно загружена, иначе false.
+ */
+function loadGame(){
+  try{
+    let raw=localStorage.getItem(SAVE_KEY); // Попытка загрузить текущую версию
+    if(!raw)raw=localStorage.getItem('pixel_vault_save_v2'); // Загрузка v2
+    if(!raw)raw=localStorage.getItem('pixel_vault_save_v1'); // Загрузка v1
+    if(!raw)return false; // Нет сохранений
+    return applyLoadedData(JSON.parse(raw)); // Парсим JSON и применяем данные
+  }catch(e){return false;} // Ошибка парсинга или другие ошибки
+}
+
+/**
+ * Экспортирует текущее состояние игры в формате JSON.
+ * Копирует JSON в буфер обмена или выводит в prompt.
+ */
+function exportSave(){
+  const raw=JSON.stringify(getSavePayload());
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    // Используем Clipboard API, если доступно
+    navigator.clipboard.writeText(raw).then(()=>showToast('JSON В БУФЕРЕ ОБМЕНА','buy')).catch(()=>prompt('JSON:',raw));
+  }else{
+    // Fallback для старых браузеров
+    prompt('Скопируйте JSON:',raw);
+  }
+}
+
+/**
+ * Импортирует состояние игры из JSON-строки.
+ * Пользователь вводит JSON в prompt.
+ */
+function importSave(){
+  const t=prompt('Вставьте JSON сохранения');
+  if(!t)return; // Если пользователь отменил ввод
+  try{
+    if(applyLoadedData(JSON.parse(t))){ // Попытка парсинга и применения данных
+      // Обновляем активные вкладки и UI
+      document.querySelectorAll('.cat-tab').forEach(el=>el.classList.toggle('active',el.dataset.cat===_cat));
+      updateUI({bump:false,forceUpgrades:true});
+      showToast('ИМПОРТ ВЫПОЛНЕН','buy');
+    }else showToast('НЕВЕРНЫЕ ДАННЫЕ','warn'); // Некорректные данные
+  }catch(e){ showToast('ОШИБКА JSON','warn'); } // Ошибка парсинга JSON
+}
+
+/**
+ * Сбрасывает весь прогресс игры.
+ * Требует подтверждения пользователя.
+ */
+function resetGame(){
+  if(!confirm('Сбросить весь прогресс?'))return; // Подтверждение
+  localStorage.removeItem(SAVE_KEY); // Удаляем все сохранения
+  localStorage.removeItem('pixel_vault_save_v2');
+  localStorage.removeItem('pixel_vault_save_v1');
+  // Сброс всех игровых переменных к начальным значениям
+  score=0;totalScore=0;clickCount=0;currentSprite='chest_closed';level=1;spriteOrder=[];
+  for(const u of UPG)u.level=0; // Сбрасываем уровни всех улучшений
+  applyAllUpgradeEffects(); // Пересчитываем эффекты
+  document.querySelectorAll('.cat-tab').forEach(el=>el.classList.toggle('active',el.dataset.cat===_cat));
+  updateUI({bump:false,forceUpgrades:true}); // Обновляем UI
+  showToast('ПРОГРЕСС СБРОШЕН','buy');
+}
+
+// ══ RENDER SPRITE ══
+/**
+ * Обновляет отображение основного спрайта.
+ * Меняет спрайт на открытый сундук после 30 кликов.
+ */
+function renderSprite(){
+  const btn=document.getElementById('click-btn');
+  let key=currentSprite;
+  if(key==='chest_closed'&&clickCount>=30)key='chest_open'; // Открывает сундук после 30 кликов
+  btn.innerHTML=SPRITES[key]||SPRITES.chest_closed; // Вставляем SVG-код спрайта
+}
+
+// ══ RENDER UPGRADES ══
+let _cat='all'; // Текущая активная категория улучшений (по умолчанию "все")
+
+/**
+ * Рендерит (отображает) карточки улучшений в панели.
+ * Фильтрует улучшения по категории.
+ */
+function renderUpgrades(){
+  const el=document.getElementById('upgrade-list');
+  el.innerHTML=UPG.map((u,i)=>{ // Итерируемся по массиву улучшений
+    if(_cat!=='all'&&u.cat!==_cat)return''; // Фильтруем по категории
+    const price=upgradePrice(u); // Стоимость улучшения
+    const canAfford=score>=price; // Может ли игрок позволить
+    const maxed=u.level>=u.maxLevel; // Достигнут ли максимальный уровень
+    // Генерируем HTML для карточки улучшения
+    return`<div class="upgrade-card cat-${u.cat} ${maxed?'maxed':''}" data-idx="${i}">
+      <div class="card-head">
+        <div class="card-icon">${ICONS[u.icon]||''}</div>
+        <div class="card-title">${u.title}</div>
+        <div class="card-level">УР.${u.level}/${u.maxLevel}</div>
+      </div>
+      <div class="card-desc">${u.desc}</div>
+      <div class="card-footer">
+        <div class="card-cost ${!canAfford&&!maxed?'cant':''}">
+          ${maxed?'✓ МАКСИМУМ':`⬛ ${fmt(price)}`}
+        </div>
+        <div class="card-effect">${u.fxText()}</div>
+      </div>
+    </div>`;
+  }).join(''); // Объединяем все HTML-строки в одну
+}
+
+let _lastRUP=0; // Время последнего рендеринга улучшений
+const RUP_THROTTLE_MS=120; // Задержка для троттлинга рендеринга
+/**
+ * Рендерит улучшения, но с троттлингом (ограничением частоты).
+ * @param {boolean} force - Если true, рендеринг будет выполнен немедленно.
+ */
+function maybeRenderUpgrades(force){
+  const now=performance.now();
+  if(force||now-_lastRUP>=RUP_THROTTLE_MS){
+    _lastRUP=now;
+    renderUpgrades();
+  }
+}
+
+/**
+ * Переключает активную категорию улучшений и обновляет их отображение.
+ * @param {string} cat - ID категории.
+ */
+function filterCat(cat){
+  _cat=cat;
+  document.querySelectorAll('.cat-tab').forEach(t=>t.classList.toggle('active',t.dataset.cat===cat)); // Активируем нужную вкладку
+  maybeRenderUpgrades(true); // Принудительно перерендериваем улучшения
+}
+
+// ══ EVENT DELEGATION — ГЛАВНЫЙ ФИКС БАГА ══
+// Делегирование событий: один слушатель на родительский элемент
+document.getElementById('upgrade-list').addEventListener('pointerdown',e=>{
+  const card=e.target.closest('[data-idx]'); // Находим ближайшую карточку улучшения
+  if(!card||card.classList.contains('locked')||card.classList.contains('maxed'))return; // Игнорируем заблокированные или максимальные
+  buyUpgrade(parseInt(card.dataset.idx)); // Покупаем улучшение по его индексу
+});
+
+// ══ FORMAT ══
+/**
+ * Форматирует число для удобного отображения (K, M, B, T).
+ * @param {number} n - Число.
+ * @returns {string} Отформатированная строка.
+ */
+function fmt(n){
+  if(n>=1e12)return(n/1e12).toFixed(2)+'T';
+  if(n>=1e9) return(n/1e9).toFixed(2)+'B';
+  if(n>=1e6) return(n/1e6).toFixed(2)+'M';
+  if(n>=1e3) return(n/1e3).toFixed(1)+'K';
+  return Math.floor(n).toString();
+}
+
+// ══ UPDATE UI ══
+/**
+ * Обновляет все элементы пользовательского интерфейса.
+ * @param {object} opts - Опции обновления {bump: boolean, forceUpgrades: boolean}.
+ */
+function updateUI(opts={}){
+  const bump=opts.bump!==false; // Флаг для анимации "подпрыгивания" счета
+  const forceUpgrades=opts.forceUpgrades!==false; // Флаг для принудительного рендеринга улучшений
+  const el=document.getElementById('score-display');
+  el.textContent=fmt(score); // Обновляем текущий счет
+  if(bump){
+    el.classList.add('bump');
+    setTimeout(()=>el.classList.remove('bump'),120); // Удаляем класс после анимации
+  }
+  document.getElementById('total-label').textContent=`ВСЕГО НАБРАНО: ${fmt(totalScore)}`; // Обновляем общий счет
+
+  const prevLevel=level; // Запоминаем предыдущий уровень
+  syncLevelFromTotal(); // Синхронизируем уровень
+  if(level!==prevLevel){ // Если уровень изменился
+    document.getElementById('level-num').textContent=level;
+    document.getElementById('level-cur').textContent=level;
+    showToast(`⭐ УРОВЕНЬ ${level} ОТКРЫТ!`,'buy'); // Показываем тост о новом уровне
+    playLevelUp(); // Воспроизводим звук
+    if(U('shield').level>0)U('shield').effect(); // Если есть щит, пересчитываем его эффект
+  }
+
+  // Обновляем статистику
+  document.getElementById('stat-click').textContent=fmt(clickPower);
+  document.getElementById('stat-crit').textContent=Math.round(critChance*100)+'%';
+  document.getElementById('click-power-label').textContent='+'+fmt(clickPower);
+
+  // Обновляем XP-бар
+  const ci=Math.min(level-1,LVL_TH.length-1);
+  const ni=Math.min(level,LVL_TH.length-1);
+  const pct=LVL_TH[ni]>LVL_TH[ci]?((totalScore-LVL_TH[ci])/(LVL_TH[ni]-LVL_TH[ci]))*100:100; // Процент заполнения XP-бара
+  document.getElementById('xp-bar').style.width=Math.min(100,pct)+'%';
+  document.getElementById('next-level').textContent=Math.min(level+1,LVL_TH.length); // Следующий уровень
+
+  const leveled=level!==prevLevel;
+  if(forceUpgrades||leveled)maybeRenderUpgrades(true); // Принудительный рендеринг улучшений
+  else maybeRenderUpgrades(false); // Обычный (троттлинговый) рендеринг
+  scheduleSave(); // Планируем сохранение
+}
+
+// ══ CLICK ══
+/**
+ * Обрабатывает событие клика по спрайту.
+ * @param {number} cx - Координата X клика (для частиц).
+ * @param {number} cy - Координата Y клика (для частиц).
+ */
+function doClick(cx,cy){
+  AC.resume(); clickCount++; // Возобновляем AudioContext, увеличиваем счетчик кликов
+  let power=clickPower,isCrit=false,isCombo=false,isJackpot=false;
+
+  // Fury: бонус от баланса
+  if(U('fury').level>0) power+=score*(U('fury').level*0.001);
+
+  // Crit (критический удар)
+  if(critChance>0&&Math.random()<critChance){power*=5;isCrit=true;}
+
+  // Combo (каждый 10-й клик)
+  if(U('combo').level>0&&clickCount%10===0){power*=(2+U('combo').level);isCombo=true;}
+
+  // Jackpot (шанс на большой бонус)
+  if(U('lucky').level>0&&Math.random()<U('lucky').level*0.01){power*=50;isJackpot=true;}
+
+  power=Math.ceil(power); // Округляем силу клика
+  score+=power;totalScore+=power; // Добавляем очки
+  playClick(); // Воспроизводим звук клика
+  if(isCrit)playCrit();else if(Math.random()<0.25)playCoin(); // Звук крита или монеты
+
+  // Анимация "удара" по спрайту
+  const btn=document.getElementById('click-btn');
+  btn.classList.add('hit');
+  setTimeout(()=>btn.classList.remove('hit'),110);
+
+  // Анимация "тряски" области спрайта
+  const wrap=document.getElementById('sprite-wrap');
+  wrap.classList.remove('shake'); void wrap.offsetWidth; wrap.classList.add('shake'); // Перезапуск CSS-анимации
+
+  // Анимация пульсирующего кольца
+  const ring=document.createElement('div');
+  ring.className='pulse-ring';wrap.appendChild(ring);
+  setTimeout(()=>ring.remove(),450);
+
+  spawnParticle(cx,cy,power,isCrit,isCombo,isJackpot); // Создаем частицы с текстом
+  spawnPixelDots(cx,cy); // Создаем разлетающиеся пиксели
+  if(currentSprite==='chest_closed'&&clickCount===30)renderSprite(); // Открываем сундук, если набрано 30 кликов
+  updateUI(); // Обновляем UI
+}
+
+// ══ PARTICLE POOLING ══
+// Пул объектов для переиспользования DOM-элементов частиц, чтобы избежать постоянного создания/удаления
+const POOL_TXT=28,POOL_DOT=56;
+const _poolTxt=[],_poolDot=[];
+
+// Функции для получения и возврата текстовых частиц в пул
+function getPoolTxt(){
+  let el=_poolTxt.pop(); // Берем из пула
+  if(!el) el=document.createElement('div'); // Если пул пуст, создаем новый
+  return el;
+}
+function releasePoolTxt(el){
+  el.remove(); // Удаляем из DOM
+  el.className=''; // Сбрасываем классы
+  el.style.cssText=''; // Сбрасываем стили
+  el.textContent=''; // Сбрасываем текст
+  if(_poolTxt.length<POOL_TXT)_poolTxt.push(el); // Возвращаем в пул, если не переполнен
+}
+
+// Функции для получения и возврата пиксельных точек в пул (аналогично текстовым)
+function getPoolDot(){
+  let el=_poolDot.pop();
+  if(!el) el=document.createElement('div');
+  return el;
+}
+function releasePoolDot(el){
+  el.remove();
+  el.className='';
+  el.style.cssText='';
+  if(_poolDot.length<POOL_DOT)_poolDot.push(el);
+}
+
+/**
+ * Создает текстовую частицу при клике.
+ * @param {number} x - Начальная координата X.
+ * @param {number} y - Начальная координата Y.
+ * @param {number} power - Количество очков.
+ * @param {boolean} crit - Был ли это критический удар.
+ * @param {boolean} combo - Было ли это комбо.
+ * @param {boolean} jackpot - Был ли это джекпот.
+ */
+function spawnParticle(x,y,power,crit,combo,jackpot){
+  const el=getPoolTxt(); // Получаем элемент из пула
+  let cls='particle',txt='+'+fmt(power);
+  // Определяем текст и класс в зависимости от типа клика
+  if(jackpot){cls+=' crit';txt='💰 ДЖЕКПОТ! +'+fmt(power);}
+  else if(combo){cls+=' crit';txt='⚡ КОМБО! +'+fmt(power);}
+  else if(crit) {cls+=' crit';txt='★ КРИТ! +'+fmt(power);}
+  el.className=cls;el.textContent=txt;
+  el.style.left=(x+(Math.random()*50-25))+'px'; // Случайное смещение по X
+  el.style.top=y+'px';
+  document.getElementById('particles').appendChild(el); // Добавляем на слой частиц
+  setTimeout(()=>releasePoolTxt(el),1000); // Возвращаем в пул через 1 секунду
+}
+
+/**
+ * Создает разлетающиеся пиксельные точки при клике.
+ * @param {number} x - Начальная координата X.
+ * @param {number} y - Начальная координата Y.
+ */
+function spawnPixelDots(x,y){
+  const cols=['#f0c040','#ffe060','#40e0d0','#e04040','#9060e0','#40c060']; // Цвета пикселей
+  for(let i=0;i<8;i++){ // Создаем 8 пикселей
+    const el=getPoolDot(); // Получаем элемент из пула
+    el.className='pixel-dot';
+    const a=Math.random()*Math.PI*2,d=35+Math.random()*65; // Случайный угол и дистанция разлета
+    el.style.setProperty('--dx',Math.cos(a)*d+'px'); // Устанавливаем CSS-переменные для анимации
+    el.style.setProperty('--dy',Math.sin(a)*d+'px');
+    el.style.left=x+'px';el.style.top=y+'px';
+    el.style.background=cols[Math.floor(Math.random()*cols.length)]; // Случайный цвет
+    el.style.width=el.style.height=(4+Math.random()*6|0)+'px'; // Случайный размер
+    document.getElementById('particles').appendChild(el);
+    setTimeout(()=>releasePoolDot(el),750); // Возвращаем в пул через 0.75 секунды
+  }
+}
+
+// ══ BUY ══
+/**
+ * Покупает указанное улучшение.
+ * @param {number} i - Индекс улучшения в массиве UPG.
+ */
+function buyUpgrade(i){
+  AC.resume();
+  const u=UPG[i];
+  if(!u||u.level>=u.maxLevel)return; // Если улучшение не существует или уже максимального уровня
+  const price=upgradePrice(u);
+  if(score<price){playError();showToast('НЕ ХВАТАЕТ ОЧКОВ!','warn');return;} // Если недостаточно очков
+  score-=price;u.level++;u.effect(); // Вычитаем стоимость, повышаем уровень, применяем эффект
+  if(SPRITE_IDS.includes(u.id)&&!spriteOrder.includes(u.id))spriteOrder.push(u.id); // Добавляем спрайт в порядок, если это спрайт
+  playBuy();showToast(`✓ ${u.title} → УР.${u.level}`,'buy'); // Звук и тост о покупке
+  updateUI(); // Обновляем UI
+}
+
+// ══ PANEL ══
+/**
+ * Переключает состояние панели улучшений (открыть/закрыть).
+ */
+function togglePanel(){
+  panelOpen=!panelOpen; // Инвертируем состояние
+  document.getElementById('upgrade-panel').classList.toggle('open',panelOpen); // Добавляем/удаляем класс 'open'
+  document.getElementById('upgrade-toggle').classList.toggle('open',panelOpen);
+  document.getElementById('main').classList.toggle('panel-open',panelOpen);
+  document.getElementById('upgrade-toggle').textContent=panelOpen?'▶ ЗАКРЫТЬ ◀':'▶ УЛУЧШЕНИЯ ◀'; // Меняем текст кнопки
+  document.getElementById('upgrade-toggle').setAttribute('aria-expanded',panelOpen); // Обновляем ARIA-атрибут для доступности
+}
+
+// ══ TOAST ══
+let _tt; // Таймер для скрытия тоста
+/**
+ * Показывает всплывающее уведомление (тост).
+ * @param {string} msg - Текст сообщения.
+ * @param {string} [type=''] - Тип уведомления ('warn', 'buy', '').
+ */
+function showToast(msg,type=''){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='show '+(type||''); // Устанавливаем текст, добавляем класс 'show' и тип
+  clearTimeout(_tt);_tt=setTimeout(()=>t.className='',2400); // Скрываем через 2.4 секунды
+}
+
+// ══ AUTO TICK ══
+let autoAccum=0,lastTick=performance.now(); // Накопитель для авто-дохода, время последнего тика
+/**
+ * Основной игровой цикл, вызывается с requestAnimationFrame.
+ * Обрабатывает автоматический доход.
+ * @param {DOMHighResTimeStamp} now - Текущее время.
+ */
+function tick(now){
+  const dt=Math.min((now-lastTick)/1000,0.5);lastTick=now; // Дельта времени (в секундах), ограничение 0.5с для защиты от больших скачков
+  if(autoRate>0){
+    autoAccum+=autoRate*dt; // Накапливаем авто-доход
+    if(autoAccum>=1){ // Если накопился хотя бы 1 очко
+      const add=Math.floor(autoAccum);
+      score+=add;totalScore+=add;autoAccum-=add; // Добавляем очки, вычитаем из накопителя
+      updateUI({bump:false,forceUpgrades:false}); // Обновляем UI (без анимации bump и принудительного рендеринга улучшений)
+    }
+  }
+  requestAnimationFrame(tick); // Планируем следующий тик
+}
+
+// ══ SPRITE CLICK ══
+// Обработчик события 'pointerdown' (клик/касание) на кнопке спрайта
+document.getElementById('click-btn').addEventListener('pointerdown',e=>{
+  e.preventDefault(); // Предотвращаем стандартное поведение (например, выделение)
+  const r=e.currentTarget.getBoundingClientRect(); // Получаем размеры и положение спрайта
+  doClick(r.left+r.width/2,r.top+r.height/2); // Вызываем функцию клика, передавая центр спрайта
+});
+
+// ══ KEYBOARD ══
+// Обработчик нажатий клавиш
+document.addEventListener('keydown',e=>{
+  if(e.code==='Space'){ // Если нажата пробел
+    e.preventDefault(); // Предотвращаем прокрутку страницы
+    const r=document.getElementById('click-btn').getBoundingClientRect();
+    doClick(r.left+r.width/2,r.top+r.height/2); // Имитируем клик по спрайту
+  }
+  if(e.code==='KeyU')togglePanel(); // Если нажата 'U', переключаем панель улучшений
+});
+
+// ══ INIT ══
+// Инициализация игры
+loadGame(); // Загружаем игру
+// Устанавливаем активную категорию улучшений на основе загруженного состояния
+document.querySelectorAll('.cat-tab').forEach(t=>t.classList.toggle('active',t.dataset.cat===_cat));
+renderSprite(); // Рендерим спрайт
+updateUI({bump:false,forceUpgrades:true}); // Обновляем UI (принудительно рендерим улучшения)
+// Сохраняем игру при закрытии или перезагрузке страницы
+window.addEventListener('beforeunload',()=>{clearTimeout(_saveT);saveGame();});
+requestAnimationFrame(tick); // Запускаем игровой цикл
+</script>
+</body>
+</html>
